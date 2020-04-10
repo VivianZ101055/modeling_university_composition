@@ -1,0 +1,191 @@
+---
+title: "Modeling University Composition"
+author: "Vivian Zhang"
+date: "4/10/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(infer)
+library(tidyverse)
+
+```
+
+```{r Q3}
+
+# We create a tibble for students
+# The idea column contains 6120 rows, and we use
+# the rep function so that each grade has a specified
+# number of students
+
+all_students <- tibble(
+  ID = 1:6120,
+  grade = c(
+    rep("freshman", 1800),
+    rep("sophomore", 1450),
+    rep("junior", 1570),
+    rep("senior", 1300)
+))
+
+# We want to find the percentage of each grade
+# we have in the total student population. We
+# accomplish this by grouping by grade, counting
+# the number of observations for that given grade
+# and adding to a new column called pct.
+
+all_proportions <- all_students %>%
+  group_by(grade) %>%
+  count() %>%
+  mutate(pct = n/6120 * 100)
+
+# We create a ggplot with geom_col and relabel
+# the y axis. To make it like the graph in the
+# assignment html, I didn't reorder the grades
+# based on the youngest to oldest students.
+
+ggplot(all_proportions, aes(grade, pct)) +
+  geom_col() +
+  labs(title = "University Composition by Grade",
+      subtitle = "Entire Study Population") +
+  scale_y_continuous(breaks = c(0, 10, 20, 30), labels = c("0%", "10%", "20%", "30%")) +
+  theme_classic() +
+  geom_text(aes(label = c("29.4%", "25.7%", "21.2%", "23.7%"), vjust = -0.5))
+
+```
+
+# Question 4
+
+```{r Q4}
+
+# The set.seed function allows us to get the same
+# sample result as the example
+
+set.seed(02139)
+
+# We create a function that samples from the students dataframe
+# and takes 25 students. These students are grouped by grade.
+# We filter so that we only look at freshmen and count the 
+# number of freshmen in our sample. We mutate to create
+# a new column, which renders the percentage of freshmen
+# in the sample.
+
+one_sample <- function(){
+  rep_sample_n(all_students, 25) %>%
+  group_by(grade) %>%
+  filter(grade == "freshman") %>%
+  summarize(number = n()) %>%
+  mutate(percentage_freshman = number/25 * 100) %>%
+  pull(percentage_freshman)
+}
+
+# We create a tibble that runs through the function
+# 5000 times, taking 5000 samples of 25 students
+
+distribution <- tibble(test_number = map(1:5000, ~ one_sample()))
+
+```
+
+```{r Q4 graph}
+
+# Here I plot my data in a histogram. We have to cast
+# the test_number in the tibble to a numeric. I change
+# the labels and add percentage signs to make everything
+# clearer.
+
+ggplot(distribution, aes(as.numeric(test_number))) +
+  geom_histogram(bins = 16, color = "white") +
+  labs(title = "Sampling Distribution of Percentage Freshman",
+       subtitle = "Distribution drawn from 5000 samples of 25 students",
+       x = "Percentage of Freshman in the Sample",
+       y = "Count") +
+  scale_x_continuous(breaks = c(0, 10, 20, 30, 40, 50, 60, 70),
+                     labels = c("0%", "10%", "20%", "30%", "40%",
+                                "50%", "60%", "70%" )) +
+  theme_classic()
+
+```
+
+```{r Q5}
+
+# Creating a list of 4 different sizes
+# Making sizes into a named list
+# .id in quotes - treat as a string
+
+sizes <- list(25,50,100,500)
+sizes <- set_names(sizes, nm = sizes)
+
+# Resetting the seed to 02139 so that the graph
+# looks the same as the sample
+
+set.seed(02139)
+
+# Now, I use map_df, which outputs a dataframe
+# First argument is the list it's going over
+# This creates a dataframe with a column displaying sizes, a replicate
+# column, an ID column, and a grade column
+# The function we use is rep_sample_n
+# Initially, I put all_students inside of the map_df() function,
+# but I discovered that similar to previous map functions,
+# we want the data inside the function
+# I put size=. on the inside of the function, and specified
+# a name for .id on the outside
+# Replace = FALSE because we don't want to choose the same
+# person twice in a given sample
+
+mydata <- map_df(sizes, ~ rep_sample_n(all_students, size =., replace = FALSE, reps = 5000), .id = "size")
+
+# Now, we cast size into a numeric (note that we do this before
+# grouping by size)
+
+mydata$size <- as.numeric(as.character(mydata$size))
+
+# We group by size and replicate so that we can keep the
+# size column and take the sample number into consideration
+# We filter for the freshman, and count the number in each
+# replicate. Next, we create a new column using mutate
+# to find the proportion of freshman in our sample
+# we ungroup so that the grouping does not cause future issues
+
+mydata <- mydata %>%
+  group_by(size, replicate) %>%
+  filter(grade == "freshman") %>%
+  summarize(number = n()) %>%
+  mutate(proportion_freshman = number/size) %>%
+  ungroup()
+
+# We cast size into a character again, so that the legend
+# can be discrete
+
+mydata$size <- as.character(as.numeric(mydata$size))
+
+# We reorder the elements in the legend to make it in
+# ascending order and more similar to the sample
+# graphic.
+
+mydata$size <- factor(mydata$size, levels = c(25,50,100,500))
+
+```
+
+```{r ggplot for Q5}
+
+# Now we use geom_density to create our plot. We assign
+# colors and fill based on the size of the sample.
+# Alpha inside of geom_density tells us how light or
+# dark to make our fill. We set the color = "black" to make
+# the outlines of the graph black. We change the titles and
+# subtitles to match the sample graph. I choose the classic
+# theme, which also takes away the grid in the background.
+
+ggplot(mydata, aes(x = proportion_freshman, color = size, fill = size)) +
+  geom_density(alpha = 0.2, color = "black") +
+  labs(
+    title = "Distribution of Percentage Freshmen",
+    subtitle = "Average sampled percentage gets closer to true percentage as sample size increases",
+    x = "Proportion of freshmen",
+    y = "Count"
+  ) +
+  theme_classic()
+
+```
